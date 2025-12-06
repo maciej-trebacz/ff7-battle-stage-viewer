@@ -24,10 +24,13 @@ class TextureRegionSelector {
         
         this.dragOffset = { x: 0, y: 0 };
         this.isDraggingDialog = false;
-        
+
         this.existingTextures = [];
         this.selectedExistingTexture = null;
         this.isReuseMode = false;
+
+        this.duplicateCheckbox = null;
+        this.duplicateAtEnd = false;
         
         this.createDOM();
         this.bindEvents();
@@ -65,6 +68,10 @@ class TextureRegionSelector {
                         <div class="trs-hint">
                             Selection snaps to 32px grid. Minimum size: 64x64. UV triangles shown in cyan.
                         </div>
+                        <label class="trs-duplicate-toggle">
+                            <input type="checkbox" class="trs-duplicate-checkbox">
+                            <span>Create a duplicate section at the end</span>
+                        </label>
                     </div>
                 </div>
             </div>
@@ -92,6 +99,7 @@ class TextureRegionSelector {
         this.reuseDropdown = this.dialog.querySelector('.trs-reuse-dropdown');
         this.textureSelect = this.dialog.querySelector('.trs-texture-select');
         this.canvasSection = this.dialog.querySelector('.trs-canvas-section');
+        this.duplicateCheckbox = this.dialog.querySelector('.trs-duplicate-checkbox');
     }
     
     injectStyles() {
@@ -161,6 +169,19 @@ class TextureRegionSelector {
             .trs-hint {
                 color: #888;
                 font-size: 0.75rem;
+            }
+            .trs-duplicate-toggle {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 8px;
+                cursor: pointer;
+                font-size: 0.85rem;
+            }
+            .trs-duplicate-toggle input {
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
             }
             .trs-footer {
                 display: flex;
@@ -265,10 +286,10 @@ class TextureRegionSelector {
         this.confirmBtn.addEventListener('click', () => {
             if (this.isReuseMode && this.selectedExistingTexture !== null) {
                 if (this.onReuseTexture) {
-                    this.onReuseTexture(this.selectedExistingTexture);
+                    this.onReuseTexture(this.selectedExistingTexture, this.duplicateAtEnd);
                 }
             } else if (this.selection && this.onConfirm) {
-                this.onConfirm(this.getSelectedRegion());
+                this.onConfirm(this.getSelectedRegion(), this.duplicateAtEnd);
             }
         });
         
@@ -279,7 +300,7 @@ class TextureRegionSelector {
         this.cancelBtn.addEventListener('click', () => {
             if (this.onCancel) this.onCancel();
         });
-        
+
         this.reuseCheckbox.addEventListener('change', () => {
             this.isReuseMode = this.reuseCheckbox.checked;
             this.reuseDropdown.style.display = this.isReuseMode ? 'block' : 'none';
@@ -291,6 +312,10 @@ class TextureRegionSelector {
             const value = this.textureSelect.value;
             this.selectedExistingTexture = value !== '' ? parseInt(value) : null;
             this.updateConfirmState();
+        });
+
+        this.duplicateCheckbox.addEventListener('change', () => {
+            this.duplicateAtEnd = this.duplicateCheckbox.checked;
         });
     }
     
@@ -326,12 +351,14 @@ class TextureRegionSelector {
         this.existingTextures = existingTextures || [];
         this.isReuseMode = false;
         this.selectedExistingTexture = null;
-        
+        this.duplicateAtEnd = false;
+
         this.sectionNameEl.textContent = sectionName;
-        
+
         this.reuseCheckbox.checked = false;
         this.reuseDropdown.style.display = 'none';
         this.canvasSection.classList.remove('disabled');
+        this.duplicateCheckbox.checked = false;
         
         if (this.existingTextures.length > 0) {
             this.reuseSection.style.display = 'block';

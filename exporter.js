@@ -72,17 +72,19 @@ class FF7Exporter {
         return files;
     }
     
-    exportAllWithRegions(regionConfigs, createdTextures) {
+    exportAllWithRegions(regionConfigs, createdTextures, exportSections = null) {
         const files = [];
-        const modelPieces = [];
+        const modelPieces = exportSections ? [...exportSections] : [];
 
-        if (this.parsedData.groundPlane) {
-            modelPieces.push({ data: this.parsedData.groundPlane, type: 'ground', index: 0 });
+        if (!exportSections) {
+            if (this.parsedData.groundPlane) {
+                modelPieces.push({ data: this.parsedData.groundPlane, type: 'ground', index: 0, sectionId: 'ground-0' });
+            }
+
+            this.parsedData.geometry3D.forEach((geom, idx) => {
+                modelPieces.push({ data: geom, type: '3d', index: idx, sectionId: `3d-${idx}` });
+            });
         }
-
-        this.parsedData.geometry3D.forEach((geom, idx) => {
-            modelPieces.push({ data: geom, type: '3d', index: idx });
-        });
 
         const numTextures = createdTextures.length;
         const skeletonData = this.buildSkeletonFile(modelPieces.length, numTextures);
@@ -106,9 +108,10 @@ class FF7Exporter {
         });
 
         modelPieces.forEach((piece, idx) => {
-            const regionConfig = regionConfigs.find(rc => 
-                rc.sectionType === piece.type && rc.sectionIndex === piece.index
-            );
+            const regionConfig = regionConfigs.find(rc => {
+                if (piece.sectionId) return rc.sectionId === piece.sectionId;
+                return rc.sectionType === piece.type && rc.sectionIndex === piece.index;
+            });
             
             const texIndex = regionConfig?.texIndex ?? idx;
             
