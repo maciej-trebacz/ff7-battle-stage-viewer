@@ -13,6 +13,7 @@ class ExportWizard {
         this.regionConfigs = [];
         this.currentSectionIndex = 0;
         this.sections = [];
+        this.duplicateSections = [];
         this.cancelled = false;
         this.createdTextures = [];
         this.nextTexIndex = 0;
@@ -26,6 +27,7 @@ class ExportWizard {
         this.cancelled = false;
         this.createdTextures = [];
         this.nextTexIndex = 0;
+        this.duplicateSections = [];
         
         this.buildSectionList();
         
@@ -55,8 +57,11 @@ class ExportWizard {
                     return null;
                 }
                 
+                let baseConfig;
+
                 if (result.reuseTexIndex !== undefined) {
-                    this.regionConfigs.push({
+                    baseConfig = {
+                        sectionId: section.sectionId,
                         sectionType: section.type,
                         sectionIndex: section.index,
                         name: section.name,
@@ -64,18 +69,20 @@ class ExportWizard {
                         region: null,
                         texIndex: result.reuseTexIndex,
                         isReuse: true
-                    });
+                    };
+                    this.regionConfigs.push(baseConfig);
                 } else {
                     const texIndex = this.nextTexIndex++;
-                    
+
                     this.createdTextures.push({
                         texIndex: texIndex,
                         name: section.name,
                         region: result.region,
                         palette: section.palette
                     });
-                    
-                    this.regionConfigs.push({
+
+                    baseConfig = {
+                        sectionId: section.sectionId,
                         sectionType: section.type,
                         sectionIndex: section.index,
                         name: section.name,
@@ -83,7 +90,27 @@ class ExportWizard {
                         region: result.region,
                         texIndex: texIndex,
                         isReuse: false
-                    });
+                    };
+                    this.regionConfigs.push(baseConfig);
+                }
+
+                if (result.duplicateAtEnd) {
+                    const duplicateSectionId = `${section.sectionId}-dup-${this.duplicateSections.length + 1}`;
+                    const duplicateSection = {
+                        ...section,
+                        sectionId: duplicateSectionId,
+                        name: `${section.name} (Duplicate)`
+                    };
+
+                    const duplicateConfig = {
+                        ...baseConfig,
+                        sectionId: duplicateSectionId,
+                        isDuplicate: true,
+                        originalSectionId: section.sectionId
+                    };
+
+                    this.duplicateSections.push(duplicateSection);
+                    this.regionConfigs.push(duplicateConfig);
                 }
             }
             
@@ -104,6 +131,7 @@ class ExportWizard {
         if (this.parsedData.groundPlane) {
             const palette = this.detectPalette(this.parsedData.groundPlane);
             this.sections.push({
+                sectionId: 'ground-0',
                 type: 'ground',
                 index: 0,
                 name: 'Ground Plane',
@@ -116,8 +144,9 @@ class ExportWizard {
             const palette = this.detectPalette(geom);
             const isSky = idx < 3;
             const name = isSky ? `Sky Section ${idx}` : `Object Section ${idx - 3}`;
-            
+
             this.sections.push({
+                sectionId: `3d-${idx}`,
                 type: '3d',
                 index: idx,
                 name: name,
@@ -236,9 +265,9 @@ class ExportWizard {
             }
             
             this.regionSelector.setCallbacks(
-                (region) => {
+                (region, duplicateAtEnd) => {
                     this.regionSelector.hide();
-                    resolve({ region: region });
+                    resolve({ region: region, duplicateAtEnd });
                 },
                 () => {
                     this.regionSelector.hide();
@@ -248,9 +277,9 @@ class ExportWizard {
                     this.regionSelector.hide();
                     resolve('cancelled');
                 },
-                (reuseTexIndex) => {
+                (reuseTexIndex, duplicateAtEnd) => {
                     this.regionSelector.hide();
-                    resolve({ reuseTexIndex: reuseTexIndex });
+                    resolve({ reuseTexIndex: reuseTexIndex, duplicateAtEnd });
                 }
             );
             
@@ -270,7 +299,12 @@ class ExportWizard {
     
     generateExport() {
         const exporter = new FF7Exporter(this.parsedData, this.prefix);
-        return exporter.exportAllWithRegions(this.regionConfigs, this.createdTextures);
+        const sectionsToExport = [...this.sections, ...this.duplicateSections];
+        return exporter.exportAllWithRegions(
+            this.regionConfigs,
+            this.createdTextures,
+            sectionsToExport
+        );
     }
 }
 
