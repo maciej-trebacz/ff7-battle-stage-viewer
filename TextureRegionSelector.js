@@ -66,7 +66,7 @@ class TextureRegionSelector {
                             <span class="trs-region-values">Click and drag to select</span>
                         </div>
                         <div class="trs-hint">
-                            Selection snaps to 32px grid. Minimum size: 64x64. UV triangles shown in cyan.
+                            Regions export as 256x256 with X offsets in 256px steps. UV triangles shown in cyan.
                         </div>
                         <label class="trs-duplicate-toggle">
                             <input type="checkbox" class="trs-duplicate-checkbox">
@@ -343,7 +343,7 @@ class TextureRegionSelector {
         this.isDraggingDialog = false;
     }
     
-    show(sectionName, textureCanvas, uvPolygons, suggestedRegion = null, existingTextures = []) {
+    show(sectionName, textureCanvas, uvPolygons, suggestedRegion = null, existingTextures = [], autoReuseTextureIndex = null) {
         this.sectionName = sectionName;
         this.textureCanvas = textureCanvas;
         this.uvPolygons = uvPolygons || [];
@@ -377,11 +377,13 @@ class TextureRegionSelector {
         const maxHeight = 400;
         const texW = textureCanvas.width;
         const texH = textureCanvas.height;
-        
+
         this.scale = Math.min(maxWidth / texW, maxHeight / texH, 2);
         this.canvas.width = texW * this.scale;
         this.canvas.height = texH * this.scale;
-        
+
+        this.applyAutoReuseSelection(autoReuseTextureIndex);
+
         this.render();
         this.updateRegionInfo();
         this.updateConfirmState();
@@ -390,6 +392,19 @@ class TextureRegionSelector {
         this.dialog.style.top = '';
         this.dialog.style.margin = '';
         this.dialog.showModal();
+    }
+
+    applyAutoReuseSelection(autoReuseTextureIndex) {
+        if (autoReuseTextureIndex === null) return;
+        const hasMatch = this.existingTextures.some(tex => tex.texIndex === autoReuseTextureIndex);
+        if (!hasMatch) return;
+
+        this.isReuseMode = true;
+        this.reuseCheckbox.checked = true;
+        this.reuseDropdown.style.display = 'block';
+        this.canvasSection.classList.add('disabled');
+        this.selectedExistingTexture = autoReuseTextureIndex;
+        this.textureSelect.value = autoReuseTextureIndex.toString();
     }
     
     updateConfirmState() {
