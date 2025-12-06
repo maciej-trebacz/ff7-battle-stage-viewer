@@ -223,7 +223,7 @@ class ExportWizard {
     computeUVBounds(uvPolygons) {
         let minU = Infinity, minV = Infinity;
         let maxU = -Infinity, maxV = -Infinity;
-        
+
         uvPolygons.forEach(poly => {
             poly.forEach(uv => {
                 minU = Math.min(minU, uv.u);
@@ -236,15 +236,43 @@ class ExportWizard {
         if (minU === Infinity) {
             return null;
         }
-        
-        const snapToGrid = (v) => Math.floor(v / 32) * 32;
-        const snapToGridCeil = (v) => Math.ceil(v / 32) * 32;
-        
+
+        const texW = this.parsedData.texture?.image?.width || 256;
+        const texH = this.parsedData.texture?.image?.height || 256;
+        const blockSize = 256;
+
+        const clampStart = (value, maxStart) => Math.max(0, Math.min(value, maxStart));
+        const coversRange = (start, min, max, size) => min >= start && max <= start + size;
+
+        const maxXStart = Math.max(0, texW - blockSize);
+        const maxYStart = Math.max(0, texH - blockSize);
+
+        const xFromMin = clampStart(Math.floor(minU / blockSize) * blockSize, maxXStart);
+        const xFromMax = clampStart(Math.floor((maxU - blockSize) / blockSize) * blockSize, maxXStart);
+
+        const chooseStart = (candidateA, candidateB, min, max, size) => {
+            const candidates = [candidateA, candidateB];
+            const exact = candidates.find(c => coversRange(c, min, max, size));
+            if (exact !== undefined) return exact;
+
+            return candidates.reduce((best, current) => {
+                const bestOverflow = Math.max(0, min - best) + Math.max(0, max - (best + size));
+                const currentOverflow = Math.max(0, min - current) + Math.max(0, max - (current + size));
+                return currentOverflow < bestOverflow ? current : best;
+            });
+        };
+
+        const xStart = chooseStart(xFromMin, xFromMax, minU, maxU, blockSize);
+
+        const yFromMin = clampStart(Math.floor(minV / blockSize) * blockSize, maxYStart);
+        const yFromMax = clampStart(Math.floor((maxV - blockSize) / blockSize) * blockSize, maxYStart);
+        const yStart = chooseStart(yFromMin, yFromMax, minV, maxV, blockSize);
+
         return {
-            x: snapToGrid(minU),
-            y: snapToGrid(minV),
-            width: Math.max(64, snapToGridCeil(maxU) - snapToGrid(minU)),
-            height: Math.max(64, snapToGridCeil(maxV) - snapToGrid(minV))
+            x: xStart,
+            y: yStart,
+            width: blockSize,
+            height: blockSize
         };
     }
     
@@ -252,6 +280,7 @@ class ExportWizard {
         return new Promise((resolve) => {
             const uvPolygons = this.extractUVPolygons(section.data);
             const suggestedRegion = this.computeUVBounds(uvPolygons);
+            const matchingTexture = this.findMatchingTexture(suggestedRegion, section.palette);
             
             const textureCanvas = decodeTIMToCanvas(
                 this.parsedData.texture, 
@@ -292,9 +321,26 @@ class ExportWizard {
                 textureCanvas,
                 uvPolygons,
                 suggestedRegion,
-                this.createdTextures
+                this.createdTextures,
+                matchingTexture
             );
         });
+    }
+
+    findMatchingTexture(region, palette) {
+        if (!region) return null;
+
+        return this.createdTextures.find(tex => {
+            if (!tex.region) return false;
+            const samePalette = tex.palette === palette;
+            const sameRegion =
+                tex.region.x === region.x &&
+                tex.region.y === region.y &&
+                tex.region.width === region.width &&
+                tex.region.height === region.height;
+
+            return samePalette && sameRegion;
+        })?.texIndex ?? null;
     }
     
     generateExport() {
