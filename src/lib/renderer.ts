@@ -1,9 +1,13 @@
+// @ts-nocheck
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
 /**
  * FF7 Battle Scene Renderer
  * Three.js-based 3D visualization of parsed scene data
  */
 
-class FF7SceneRenderer {
+export class FF7SceneRenderer {
     constructor(container) {
         this.container = container;
         this.scene = null;

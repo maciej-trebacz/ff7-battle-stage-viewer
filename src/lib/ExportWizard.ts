@@ -1,9 +1,13 @@
+// @ts-nocheck
+import { FF7Exporter } from './exporter';
+import { TextureRegionSelector } from './TextureRegionSelector';
+
 /**
  * ExportWizard - Orchestrates the multi-step export process
  * Coordinates between renderer, texture region selector, and exporter
  */
 
-class ExportWizard {
+export class ExportWizard {
     constructor(app) {
         this.app = app;
         this.renderer = app.renderer;
@@ -353,5 +357,3 @@ class ExportWizard {
         );
     }
 }
-
-window.ExportWizard = ExportWizard;
