@@ -1,10 +1,13 @@
+// @ts-nocheck
+import JSZip from 'jszip';
+
 /**
  * FF7 PC Battle Location Exporter
  * Converts PSX battle scene data to PC FF7 battle location format
  * Based on Kimera's FF7BattleSkeleton.cs and FF7PModel.cs
  */
 
-class FF7Exporter {
+export class FF7Exporter {
     constructor(parsedData, prefix) {
         this.parsedData = parsedData;
         this.prefix = (prefix || 'XX').toUpperCase().substring(0, 2).padEnd(2, 'A');
@@ -992,5 +995,3 @@ class FF7Exporter {
         URL.revokeObjectURL(url);
     }
 }
-
-window.FF7Exporter = FF7Exporter;

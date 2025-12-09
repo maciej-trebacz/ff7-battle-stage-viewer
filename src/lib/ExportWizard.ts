@@ -1,9 +1,14 @@
+// @ts-nocheck
+import { FF7Exporter } from './exporter';
+import { TextureRegionSelector } from './TextureRegionSelector';
+import { decodeTIMToCanvas } from './parser';
+
 /**
  * ExportWizard - Orchestrates the multi-step export process
  * Coordinates between renderer, texture region selector, and exporter
  */
 
-class ExportWizard {
+export class ExportWizard {
     constructor(app) {
         this.app = app;
         this.renderer = app.renderer;
@@ -47,7 +52,7 @@ class ExportWizard {
                 this.currentSectionIndex = i;
                 const section = this.sections[i];
                 
-                this.renderer.isolateSection(section.type, section.index);
+                this.renderer.isolateSection(section.index);
                 
                 const result = await this.promptForRegion(section);
                 
@@ -128,26 +133,19 @@ class ExportWizard {
     buildSectionList() {
         this.sections = [];
         
-        if (this.parsedData.groundPlane) {
-            const palette = this.detectPalette(this.parsedData.groundPlane);
-            this.sections.push({
-                sectionId: 'ground-0',
-                type: 'ground',
-                index: 0,
-                name: 'Ground Plane',
-                data: this.parsedData.groundPlane,
-                palette: palette
-            });
-        }
-        
-        this.parsedData.geometry3D.forEach((geom, idx) => {
+        this.parsedData.meshes.forEach((geom, idx) => {
             const palette = this.detectPalette(geom);
-            const isSky = idx < 3;
-            const name = isSky ? `Sky Section ${idx}` : `Object Section ${idx - 3}`;
+            const isGround = idx === 0;
+            const isSky = idx >= 1 && idx <= 3;
+            const name = isGround 
+                ? 'Ground Plane' 
+                : isSky 
+                    ? `Sky Section ${idx - 1}` 
+                    : `Object Section ${idx - 4}`;
 
             this.sections.push({
-                sectionId: `3d-${idx}`,
-                type: '3d',
+                sectionId: `mesh-${idx}`,
+                type: 'mesh',
                 index: idx,
                 name: name,
                 data: geom,
@@ -353,5 +351,3 @@ class ExportWizard {
         );
     }
 }
-
-window.ExportWizard = ExportWizard;

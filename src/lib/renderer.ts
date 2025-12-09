@@ -1,9 +1,14 @@
+// @ts-nocheck
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { decodeTIMAllPalettes } from './parser';
+
 /**
  * FF7 Battle Scene Renderer
  * Three.js-based 3D visualization of parsed scene data
  */
 
-class FF7SceneRenderer {
+export class FF7SceneRenderer {
     constructor(container) {
         this.container = container;
         this.scene = null;
@@ -12,7 +17,6 @@ class FF7SceneRenderer {
         this.controls = null;
         
         this.meshes = {
-            ground: null,
             sky: [],
             objects: []
         };
@@ -22,7 +26,6 @@ class FF7SceneRenderer {
         this.sceneData = null;
         this.quadLabels = [];
         
-        this.groundPaletteOverride = 0;
         this.sectionPaletteOverrides = {};
         
         this.settings = {
@@ -30,6 +33,10 @@ class FF7SceneRenderer {
             showSky: true,
             showObjects: true,
             wireframe: false
+        };
+        
+        this.sectionVisibility = {
+            sections: {}
         };
         
         this.init();
@@ -51,7 +58,7 @@ class FF7SceneRenderer {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
 
-        this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
         this.controls.screenSpacePanning = false;
@@ -82,9 +89,18 @@ class FF7SceneRenderer {
         this.renderer.render(this.scene, this.camera);
     }
 
-    loadScene(parsedData) {
+    loadScene(parsedData, preserveCamera = false) {
         console.log('%c=== LOADING SCENE ===', 'color: lime; font-weight: bold', 
             `triUvMode=${window.triUvMappingMode}, quadUvMode=${window.uvMappingMode}`);
+        
+        let savedCameraPosition = null;
+        let savedControlsTarget = null;
+        
+        if (preserveCamera && this.camera && this.controls) {
+            savedCameraPosition = this.camera.position.clone();
+            savedControlsTarget = this.controls.target.clone();
+        }
+        
         this.clearScene();
         this.sceneData = parsedData;
 
@@ -102,37 +118,25 @@ class FF7SceneRenderer {
             this.texture = this.paletteTextures[0] || null;
         }
 
-        if (parsedData.groundPlane) {
-            const texW = parsedData.texture?.image?.width || 512;
-            const texH = parsedData.texture?.image?.height || 256;
-            this.createGroundPlaneMesh(parsedData.groundPlane, texW, texH);
-        }
-
-        parsedData.geometry3D.forEach((geom, idx) => {
+        parsedData.meshes.forEach((geom, idx) => {
             this.create3DMesh(geom, idx);
         });
 
+        this.initializeSectionVisibility();
         this.updateVisibility();
-        this.fitCameraToScene();
+        
+        if (preserveCamera && savedCameraPosition && savedControlsTarget) {
+            this.camera.position.copy(savedCameraPosition);
+            this.controls.target.copy(savedControlsTarget);
+            this.controls.update();
+        } else {
+            this.fitCameraToScene();
+        }
 
         return this.getStats();
     }
 
     clearScene() {
-        if (this.meshes.ground) {
-            this.scene.remove(this.meshes.ground);
-            if (this.meshes.ground.isGroup) {
-                this.meshes.ground.children.forEach(mesh => {
-                    mesh.geometry.dispose();
-                    if (mesh.material) mesh.material.dispose();
-                });
-            } else {
-                this.meshes.ground.geometry.dispose();
-                if (this.meshes.ground.material) this.meshes.ground.material.dispose();
-            }
-            this.meshes.ground = null;
-        }
-
         this.meshes.sky.forEach(mesh => {
             this.scene.remove(mesh);
             mesh.geometry.dispose();
@@ -191,14 +195,15 @@ class FF7SceneRenderer {
         ];
         const triMapping = triMappings[window.triUvMappingMode || 0];
         
-        const hasOverride = this.groundPaletteOverride !== undefined && this.groundPaletteOverride !== 0;
+        const sectionPaletteOverride = this.sectionPaletteOverrides[1];
+        const hasOverride = sectionPaletteOverride !== undefined;
         
         const trianglesByPalette = {};
         const quadsByPalette = {};
 
         if (triangles && triangles.length > 0) {
             triangles.forEach((tri) => {
-                const paletteIdx = hasOverride ? this.groundPaletteOverride : (tri.paletteIndex || 0);
+                const paletteIdx = hasOverride ? sectionPaletteOverride : (tri.paletteIndex || 0);
                 if (!trianglesByPalette[paletteIdx]) {
                     trianglesByPalette[paletteIdx] = [];
                 }
@@ -208,7 +213,7 @@ class FF7SceneRenderer {
 
         if (quads && quads.length > 0) {
             quads.forEach((quad, quadIdx) => {
-                const paletteIdx = hasOverride ? this.groundPaletteOverride : (quad.paletteIndex || 0);
+                const paletteIdx = hasOverride ? sectionPaletteOverride : (quad.paletteIndex || 0);
                 if (!quadsByPalette[paletteIdx]) {
                     quadsByPalette[paletteIdx] = [];
                 }
@@ -220,9 +225,6 @@ class FF7SceneRenderer {
             ...Object.keys(trianglesByPalette),
             ...Object.keys(quadsByPalette)
         ]);
-
-        const groundGroup = new THREE.Group();
-        groundGroup.name = 'ground';
 
         allPalettes.forEach(paletteIdxStr => {
             const paletteIdx = parseInt(paletteIdxStr);
@@ -332,12 +334,10 @@ class FF7SceneRenderer {
             }
 
             const mesh = new THREE.Mesh(geometry, material);
-            mesh.name = `ground_palette_${paletteIdx}`;
-            groundGroup.add(mesh);
+            mesh.name = `section_1_palette_${paletteIdx}`;
+            this.meshes.objects.push(mesh);
+            this.scene.add(mesh);
         });
-
-        this.meshes.ground = groundGroup;
-        this.scene.add(groundGroup);
 
         if (this.debugUVMode) {
             this.addQuadLabels(quadCenters);
@@ -450,11 +450,20 @@ class FF7SceneRenderer {
 
         if (triangles.length === 0 && (!quads || quads.length === 0)) return;
 
+        const isGroundPlane = sectionIdx === 0;
+        
+        if (isGroundPlane) {
+            const texW = this.sceneData.texture?.image?.width || 512;
+            const texH = this.sceneData.texture?.image?.height || 256;
+            this.createGroundPlaneMesh(geomData, texW, texH);
+            return;
+        }
+
         const texW = window.textureWidth || 512;
         const texH = window.textureHeight || 256;
         const basePageX = window.textureBasePageX || 6;
-        const isSkySection = sectionIdx < 3;
-        const actualSectionNum = sectionIdx + 2;
+        const isSkySection = sectionIdx >= 1 && sectionIdx <= 3;
+        const actualSectionNum = sectionIdx + 1;
         
         const textureXOffset = ((texturePageX || basePageX) - basePageX) * 128;
         const textureYOffset = textureOffsetY || 0;
@@ -673,10 +682,6 @@ class FF7SceneRenderer {
     fitCameraToScene() {
         const box = new THREE.Box3();
 
-        if (this.meshes.ground) {
-            box.expandByObject(this.meshes.ground);
-        }
-
         this.meshes.objects.forEach(mesh => {
             box.expandByObject(mesh);
         });
@@ -706,17 +711,39 @@ class FF7SceneRenderer {
         this.fitCameraToScene();
     }
 
-    updateVisibility() {
-        if (this.meshes.ground) {
-            this.meshes.ground.visible = this.settings.showGround;
+    initializeSectionVisibility() {
+        this.sectionVisibility.sections = {};
+        
+        if (this.sceneData && this.sceneData.meshes) {
+            this.sceneData.meshes.forEach((geom, idx) => {
+                const isGround = idx === 0;
+                const isSky = idx >= 1 && idx <= 3;
+                this.sectionVisibility.sections[idx] = isGround ? this.settings.showGround : (isSky ? this.settings.showSky : this.settings.showObjects);
+            });
         }
+    }
 
+    updateVisibility() {
         this.meshes.sky.forEach(mesh => {
-            mesh.visible = this.settings.showSky;
+            const match = mesh.name.match(/section_(\d+)/);
+            if (match) {
+                const sectionNum = parseInt(match[1]);
+                const idx = sectionNum - 1;
+                mesh.visible = this.sectionVisibility.sections[idx] ?? true;
+            } else {
+                mesh.visible = this.settings.showSky;
+            }
         });
 
         this.meshes.objects.forEach(mesh => {
-            mesh.visible = this.settings.showObjects;
+            const match = mesh.name.match(/section_(\d+)/);
+            if (match) {
+                const sectionNum = parseInt(match[1]);
+                const idx = sectionNum - 1;
+                mesh.visible = this.sectionVisibility.sections[idx] ?? true;
+            } else {
+                mesh.visible = this.settings.showObjects;
+            }
         });
     }
 
@@ -740,26 +767,31 @@ class FF7SceneRenderer {
             }
         };
 
-        if (this.meshes.ground) {
-            if (this.meshes.ground.isGroup) {
-                this.meshes.ground.children.forEach(updateMaterial);
-            } else {
-                updateMaterial(this.meshes.ground);
-            }
-        }
         this.meshes.sky.forEach(updateMaterial);
         this.meshes.objects.forEach(updateMaterial);
     }
 
     setShowGround(visible) {
         this.settings.showGround = visible;
-        if (this.meshes.ground) {
-            this.meshes.ground.visible = visible;
+        if (this.sceneData && this.sceneData.meshes && this.sceneData.meshes.length > 0) {
+            this.sectionVisibility.sections[0] = visible;
+            this.meshes.objects.forEach(mesh => {
+                if (mesh.name && mesh.name.includes('section_1_')) {
+                    mesh.visible = visible;
+                }
+            });
         }
     }
 
     setShowSky(visible) {
         this.settings.showSky = visible;
+        if (this.sceneData && this.sceneData.meshes) {
+            this.sceneData.meshes.forEach((geom, idx) => {
+                if (idx >= 1 && idx <= 3) {
+                    this.sectionVisibility.sections[idx] = visible;
+                }
+            });
+        }
         this.meshes.sky.forEach(mesh => {
             mesh.visible = visible;
         });
@@ -767,58 +799,71 @@ class FF7SceneRenderer {
 
     setShowObjects(visible) {
         this.settings.showObjects = visible;
+        if (this.sceneData && this.sceneData.meshes) {
+            this.sceneData.meshes.forEach((geom, idx) => {
+                if (idx >= 4) {
+                    this.sectionVisibility.sections[idx] = visible;
+                }
+            });
+        }
         this.meshes.objects.forEach(mesh => {
-            mesh.visible = visible;
+            const match = mesh.name.match(/section_(\d+)/);
+            if (match) {
+                const sectionNum = parseInt(match[1]);
+                if (sectionNum >= 5) {
+                    mesh.visible = visible;
+                }
+            }
         });
     }
     
-    setPaletteOverrides(groundPalette, sectionOverrides) {
-        this.groundPaletteOverride = groundPalette;
+    setSectionVisible(index, visible) {
+        this.sectionVisibility.sections[index] = visible;
+        const isSky = index >= 1 && index <= 3;
+        const sectionNum = index + 1;
+        
+        const meshArray = isSky ? this.meshes.sky : this.meshes.objects;
+        meshArray.forEach(mesh => {
+            if (mesh.name && mesh.name.includes(`section_${sectionNum}_`)) {
+                mesh.visible = visible;
+            }
+        });
+    }
+    
+    getSectionVisibility() {
+        return {
+            sections: { ...this.sectionVisibility.sections }
+        };
+    }
+    
+    setPaletteOverrides(sectionOverrides) {
         this.sectionPaletteOverrides = sectionOverrides || {};
     }
     
-    isolateSection(type, index) {
-        this.savedVisibility = {
-            ground: this.meshes.ground?.visible,
-            sky: this.meshes.sky.map(m => m.visible),
-            objects: this.meshes.objects.map(m => m.visible)
-        };
-        
-        if (this.meshes.ground) {
-            this.meshes.ground.visible = false;
+    isolateSection(index) {
+        if (!this.savedVisibility) {
+            this.savedVisibility = {
+                sky: this.meshes.sky.map(m => m.visible),
+                objects: this.meshes.objects.map(m => m.visible)
+            };
         }
+        
         this.meshes.sky.forEach(mesh => mesh.visible = false);
         this.meshes.objects.forEach(mesh => mesh.visible = false);
         
-        if (type === 'ground') {
-            if (this.meshes.ground) {
-                this.meshes.ground.visible = true;
+        const isSky = index >= 1 && index <= 3;
+        const sectionNum = index + 1;
+        const meshArray = isSky ? this.meshes.sky : this.meshes.objects;
+        
+        meshArray.forEach(mesh => {
+            if (mesh.name && mesh.name.includes(`section_${sectionNum}_`)) {
+                mesh.visible = true;
             }
-        } else if (type === '3d') {
-            const isSky = index < 3;
-            if (isSky) {
-                const sectionNum = index + 2;
-                this.meshes.sky.forEach(mesh => {
-                    if (mesh.name && mesh.name.includes(`section_${sectionNum}`)) {
-                        mesh.visible = true;
-                    }
-                });
-            } else {
-                const sectionNum = index + 2;
-                this.meshes.objects.forEach(mesh => {
-                    if (mesh.name && mesh.name.includes(`section_${sectionNum}`)) {
-                        mesh.visible = true;
-                    }
-                });
-            }
-        }
+        });
     }
     
     restoreAllSections() {
         if (this.savedVisibility) {
-            if (this.meshes.ground && this.savedVisibility.ground !== undefined) {
-                this.meshes.ground.visible = this.savedVisibility.ground;
-            }
             this.meshes.sky.forEach((mesh, i) => {
                 if (this.savedVisibility.sky[i] !== undefined) {
                     mesh.visible = this.savedVisibility.sky[i];
@@ -849,20 +894,12 @@ class FF7SceneRenderer {
             }
         };
 
-        if (this.meshes.ground) {
-            if (this.meshes.ground.isGroup) {
-                this.meshes.ground.children.forEach(countMesh);
-            } else {
-                countMesh(this.meshes.ground);
-            }
-        }
         this.meshes.sky.forEach(countMesh);
         this.meshes.objects.forEach(countMesh);
 
-        let groundMeshCount = 0;
-        if (this.meshes.ground) {
-            groundMeshCount = this.meshes.ground.isGroup ? this.meshes.ground.children.length : 1;
-        }
+        const groundMeshCount = this.meshes.objects.filter(mesh => 
+            mesh.name && mesh.name.includes('section_1_')
+        ).length;
 
         return {
             vertices: totalVertices,

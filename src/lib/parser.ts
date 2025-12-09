@@ -1,9 +1,10 @@
+// @ts-nocheck
 /**
  * FF7 PSX Battle Scene Parser
  * Parses binary scene files according to the reverse-engineered format spec
  */
 
-class FF7SceneParser {
+export class FF7SceneParser {
   constructor(arrayBuffer) {
       this.buffer = arrayBuffer;
       this.view = new DataView(arrayBuffer);
@@ -43,8 +44,7 @@ class FF7SceneParser {
           header: null,
           sections: [],
           metadata: null,
-          groundPlane: null,
-          geometry3D: [],
+          meshes: [],
           texture: null,
           errors: []
       };
@@ -61,14 +61,10 @@ class FF7SceneParser {
               result.metadata = result.sections[0].data;
           }
 
-          if (result.sections[1] && result.sections[1].type === '3d_geometry') {
-              result.groundPlane = result.sections[1].data;
-          }
-
-          for (let i = 2; i < result.sections.length; i++) {
+          for (let i = 1; i < result.sections.length; i++) {
               const section = result.sections[i];
               if (section.type === '3d_geometry') {
-                  result.geometry3D.push(section.data);
+                  result.meshes.push(section.data);
               } else if (section.type === 'tim_texture') {
                   result.texture = section.data;
               }
@@ -346,7 +342,7 @@ class FF7SceneParser {
   }
 }
 
-function decodeTIMToCanvas(timData, paletteIndex = 0) {
+export function decodeTIMToCanvas(timData, paletteIndex = 0) {
   if (!timData || !timData.clut || !timData.pixelData) {
       console.error('Invalid TIM data');
       return null;
@@ -407,7 +403,7 @@ function decodeTIMToCanvas(timData, paletteIndex = 0) {
   return canvas;
 }
 
-function decodeTIMAllPalettes(timData) {
+export function decodeTIMAllPalettes(timData) {
   if (!timData || !timData.clut) {
       return [decodeTIMToCanvas(timData)];
   }
@@ -418,10 +414,6 @@ function decodeTIMAllPalettes(timData) {
   for (let i = 0; i < numPalettes; i++) {
       canvases.push(decodeTIMToCanvas(timData, i));
   }
-  
+
   return canvases;
 }
-
-window.FF7SceneParser = FF7SceneParser;
-window.decodeTIMToCanvas = decodeTIMToCanvas;
-window.decodeTIMAllPalettes = decodeTIMAllPalettes;

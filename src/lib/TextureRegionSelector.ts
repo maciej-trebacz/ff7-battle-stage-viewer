@@ -1,9 +1,10 @@
+// @ts-nocheck
 /**
  * TextureRegionSelector - Modal component for selecting texture regions during export
  * Displays texture with UV overlay and allows user to draw a bounding box
  */
 
-class TextureRegionSelector {
+export class TextureRegionSelector {
     constructor() {
         this.dialog = null;
         this.canvas = null;
@@ -609,5 +610,3 @@ class TextureRegionSelector {
         this.onReuseTexture = onReuseTexture;
     }
 }
-
-window.TextureRegionSelector = TextureRegionSelector;
