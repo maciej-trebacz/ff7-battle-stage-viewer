@@ -3,5 +3,6 @@ data/
 export/
 .DS_Store
 .vscode/
+.vite/
 node_modules/
 dist/
