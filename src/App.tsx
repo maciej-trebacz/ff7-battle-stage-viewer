@@ -2,16 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import JSZip from 'jszip';
 import { Header } from './components/Header';
 import { TexturePreview } from './components/TexturePreview';
-import { DebugPanel } from './components/DebugPanel';
-import { SectionsPanel } from './components/SectionsPanel';
-import { PaletteDebug } from './components/PaletteDebug';
+import { StageSections } from './components/StageSections';
 import { ViewportControls } from './components/ViewportControls';
-import { StatusBar } from './components/StatusBar';
 import { ExportWizard } from './lib/ExportWizard';
 import { FF7SceneParser } from './lib/parser';
 import { FF7SceneRenderer } from './lib/renderer';
-import { formatStats } from './utils/format';
-import { PaletteState, Stats } from './types';
+import { PaletteState, SectionVisibility, Stats } from './types';
 
 const App: React.FC = () => {
   const rendererRef = useRef<FF7SceneRenderer | null>(null);
@@ -20,28 +16,16 @@ const App: React.FC = () => {
   const [parsedData, setParsedData] = useState<any | null>(null);
   const [lastArrayBuffer, setLastArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState('No file selected');
-  const [status, setStatus] = useState('Ready');
-  const [stats, setStats] = useState<string>('');
   const [exportDisabled, setExportDisabled] = useState(true);
   const [dragOver, setDragOver] = useState(false);
 
-  const [showGround, setShowGround] = useState(true);
-  const [showSky, setShowSky] = useState(true);
-  const [showObjects, setShowObjects] = useState(true);
   const [wireframe, setWireframe] = useState(false);
-  const [debugUV, setDebugUV] = useState(false);
 
-  const [uvMappingMode, setUvMappingMode] = useState(1);
-  const [triUvMappingMode, setTriUvMappingMode] = useState(0);
-  const [uvShiftOffset, setUvShiftOffset] = useState(0);
-
-  const [paletteState, setPaletteState] = useState<PaletteState>({ ground: 0, sections: {} });
-
-  useEffect(() => {
-    (window as any).uvMappingMode = uvMappingMode;
-    (window as any).triUvMappingMode = triUvMappingMode;
-    (window as any).uvShiftOffset = uvShiftOffset;
-  }, [uvMappingMode, triUvMappingMode, uvShiftOffset]);
+  const [paletteState, setPaletteState] = useState<PaletteState>({ sections: {} });
+  const [sectionVisibility, setSectionVisibility] = useState<SectionVisibility>({ sections: {} });
+  
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportPrefix, setExportPrefix] = useState('AB');
 
   useEffect(() => {
     if (!rendererRef.current && viewportRef.current) {
@@ -50,44 +34,24 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    rendererRef.current?.setShowGround(showGround);
-  }, [showGround]);
-
-  useEffect(() => {
-    rendererRef.current?.setShowSky(showSky);
-  }, [showSky]);
-
-  useEffect(() => {
-    rendererRef.current?.setShowObjects(showObjects);
-  }, [showObjects]);
-
-  useEffect(() => {
     rendererRef.current?.setWireframe(wireframe);
   }, [wireframe]);
-
-  useEffect(() => {
-    rendererRef.current?.setDebugUVMode(debugUV);
-  }, [debugUV]);
 
   const parseAndDisplay = useCallback(
     (arrayBuffer: ArrayBuffer, name: string) => {
       if (!rendererRef.current) return;
-      setStatus('Parsing scene data...');
       setLastArrayBuffer(arrayBuffer);
       setFileName(name);
       try {
         const parser = new FF7SceneParser(arrayBuffer);
         const data = parser.parse();
         setParsedData(data);
-        setStatus('Building 3D scene...');
-        const statsResult = rendererRef.current.loadScene(data) as Stats;
-        setStats(formatStats(statsResult));
-        setStatus('Ready');
+        rendererRef.current.loadScene(data);
+        const newVisibility = rendererRef.current.getSectionVisibility();
+        setSectionVisibility(newVisibility);
         setExportDisabled(false);
       } catch (error: any) {
         console.error('Error parsing or rendering scene:', error);
-        setStatus(`Error: ${error?.message ?? 'Unknown error'}`);
-        setStats('');
       }
     },
     []
@@ -101,12 +65,11 @@ const App: React.FC = () => {
 
   const handleFile = useCallback(
     async (file: File) => {
-      setStatus(`Loading ${file.name}...`);
       try {
         const buffer = await file.arrayBuffer();
         parseAndDisplay(buffer, file.name);
       } catch (error: any) {
-        setStatus(`Error loading file: ${error?.message ?? 'Unknown error'}`);
+        console.error('Error loading file:', error);
       }
     },
     [parseAndDisplay]
@@ -151,36 +114,34 @@ const App: React.FC = () => {
   }, [handleFile]);
 
   const applyPalettes = () => {
-    rendererRef.current?.setPaletteOverrides(paletteState.ground, paletteState.sections);
+    rendererRef.current?.setPaletteOverrides(paletteState.sections);
     if (parsedData) {
-      rendererRef.current?.loadScene(parsedData);
+      rendererRef.current?.loadScene(parsedData, true);
+      const newVisibility = rendererRef.current.getSectionVisibility();
+      setSectionVisibility(newVisibility);
     }
   };
 
-  const handleExport = async () => {
-    if (!parsedData) {
-      setStatus('No scene loaded to export');
-      return;
-    }
+  const handleVisibilityChange = (index: number, visible: boolean) => {
+    rendererRef.current?.setSectionVisible(index, visible);
+    setSectionVisibility(rendererRef.current?.getSectionVisibility() || { sections: {} });
+  };
 
-    const prefix = prompt('Enter 2-letter prefix for battle location (e.g., RJ, AB, XY):');
-    if (!prefix) {
-      setStatus('Export cancelled');
-      return;
-    }
+  const handleExport = () => {
+    if (!parsedData) return;
+    setShowExportModal(true);
+  };
 
-    const cleanPrefix = prefix.trim().toUpperCase().substring(0, 2).padEnd(2, 'A');
-    setStatus(`Starting export wizard for ${cleanPrefix}...`);
+  const executeExport = async () => {
+    setShowExportModal(false);
+    
+    const cleanPrefix = exportPrefix.trim().toUpperCase().substring(0, 2).padEnd(2, 'A');
 
     try {
       const wizard = new ExportWizard({ renderer: rendererRef.current });
       const files = await wizard.start(parsedData, cleanPrefix);
-      if (!files) {
-        setStatus('Export cancelled');
-        return;
-      }
+      if (!files) return;
 
-      setStatus(`Packaging ${files.length} files...`);
       const zip = new JSZip();
       const folder = zip.folder(`${cleanPrefix}_battle_location`);
       files.forEach((file) => folder?.file(file.name, file.data));
@@ -194,64 +155,126 @@ const App: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
-      setStatus(`Exported ${cleanPrefix} battle location successfully (${files.length} files)`);
     } catch (error: any) {
       console.error('Export error:', error);
-      setStatus(`Export failed: ${error?.message ?? 'Unknown error'}`);
     }
   };
 
   useEffect(() => {
-    setPaletteState({ ground: 0, sections: {} });
+    setPaletteState({ sections: {} });
+    if (rendererRef.current) {
+      const newVisibility = rendererRef.current.getSectionVisibility();
+      setSectionVisibility(newVisibility);
+    }
   }, [parsedData]);
 
   const controls = useMemo(
     () => (
       <ViewportControls
-        showGround={showGround}
-        showSky={showSky}
-        showObjects={showObjects}
         wireframe={wireframe}
-        debugUV={debugUV}
-        uvMappingMode={uvMappingMode}
-        triUvMappingMode={triUvMappingMode}
-        uvShiftOffset={uvShiftOffset}
-        onShowGroundChange={setShowGround}
-        onShowSkyChange={setShowSky}
-        onShowObjectsChange={setShowObjects}
         onWireframeChange={setWireframe}
-        onDebugUVChange={setDebugUV}
-        onUvMappingChange={(mode) => {
-          setUvMappingMode(mode);
-          reparseIfLoaded();
-        }}
-        onTriUvMappingChange={(mode) => {
-          setTriUvMappingMode(mode);
-          reparseIfLoaded();
-        }}
-        onUvShiftChange={(shift) => {
-          setUvShiftOffset(shift);
-          reparseIfLoaded();
-        }}
         onResetCamera={() => rendererRef.current?.resetCamera()}
       />
     ),
-    [debugUV, reparseIfLoaded, showGround, showObjects, showSky, triUvMappingMode, uvMappingMode, uvShiftOffset, wireframe]
+    [wireframe]
   );
 
   return (
     <div className="app-container">
       <Header fileName={fileName} onFileChange={handleFile} onExport={handleExport} exportDisabled={exportDisabled} />
 
-      <main className="app-main">
-        <aside className="panel panel-left">
-          <div className="panel-header">
-            <h2>Debug Info</h2>
+      {showExportModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}
+          onClick={() => setShowExportModal(false)}
+        >
+          <div
+            style={{
+              background: '#1a2332',
+              border: '2px solid #3a5a8a',
+              borderRadius: '8px',
+              padding: '24px',
+              minWidth: '400px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px 0', color: '#4ad474' }}>Export Battle Location</h3>
+            <p style={{ margin: '0 0 16px 0', color: '#a0a0c0', fontSize: '0.9rem' }}>
+              Enter 2-letter prefix for battle location (e.g., RJ, AB, XY):
+            </p>
+            <input
+              type="text"
+              value={exportPrefix}
+              onChange={(e) => setExportPrefix(e.target.value)}
+              maxLength={2}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: '#0a1220',
+                border: '1px solid #3a5a8a',
+                borderRadius: '4px',
+                color: '#ffffff',
+                fontSize: '1rem',
+                fontFamily: 'monospace',
+                textTransform: 'uppercase'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  executeExport();
+                } else if (e.key === 'Escape') {
+                  setShowExportModal(false);
+                }
+              }}
+              autoFocus
+            />
+            <div style={{ marginTop: '20px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#1b2a3a',
+                  border: '1px solid #3a5a8a',
+                  borderRadius: '4px',
+                  color: '#a0a0c0',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeExport}
+                style={{
+                  padding: '8px 16px',
+                  background: '#2a4a6a',
+                  border: '1px solid #3a5a8a',
+                  borderRadius: '4px',
+                  color: '#4ad474',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                Export
+              </button>
+            </div>
           </div>
-          <DebugPanel data={parsedData} />
-        </aside>
+        </div>
+      )}
 
+      <main className="app-main">
         <section className="viewport-container">
           <div id="viewport" className="viewport" ref={viewportRef}>
             {!parsedData && (
@@ -268,30 +291,25 @@ const App: React.FC = () => {
         </section>
 
         <aside className="panel panel-right">
-          <div className="panel-section">
-            <div className="panel-header">
-              <h2>Texture Preview</h2>
-            </div>
+          <div className="panel-section" style={{ flex: '0 0 auto' }}>
             <TexturePreview texture={parsedData?.texture} />
           </div>
 
-          <div className="panel-section">
+          <div className="panel-section" style={{ flex: 1 }}>
             <div className="panel-header">
-              <h2>Palette Debug</h2>
+              <h2>Stage Sections</h2>
             </div>
-            <PaletteDebug data={parsedData} paletteState={paletteState} onPaletteChange={setPaletteState} onApply={applyPalettes} />
-          </div>
-
-          <div className="panel-section">
-            <div className="panel-header">
-              <h2>Sections</h2>
-            </div>
-            <SectionsPanel sections={parsedData?.sections} />
+            <StageSections
+              data={parsedData}
+              visibility={sectionVisibility}
+              paletteState={paletteState}
+              onVisibilityChange={handleVisibilityChange}
+              onPaletteChange={setPaletteState}
+              onApplyPalettes={applyPalettes}
+            />
           </div>
         </aside>
       </main>
-
-      <StatusBar status={status} stats={stats} />
     </div>
   );
 };

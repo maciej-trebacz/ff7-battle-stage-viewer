@@ -17,14 +17,13 @@ export const Header: React.FC<HeaderProps> = ({ fileName, onFileChange, onExport
 
   return (
     <header className="app-header">
-      <h1>FF7 Battle Scene Viewer</h1>
+      <h1>FF7 PSX Battle Stage Viewer</h1>
       <div className="file-controls">
         <input type="file" id="file-input" accept="*" onChange={handleFileInput} />
         <label htmlFor="file-input" className="file-label">
           <span className="file-icon">📂</span>
-          <span className="file-text">Select Scene File</span>
+          <span className="file-text">{fileName || 'Select Stage File'}</span>
         </label>
-        <span className="file-name">{fileName}</span>
         <button
           id="export-btn"
           style={{

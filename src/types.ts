@@ -7,6 +7,9 @@ export interface Stats {
 }
 
 export interface PaletteState {
-  ground: number;
   sections: Record<number, number>;
+}
+
+export interface SectionVisibility {
+  sections: Record<number, boolean>;
 }
