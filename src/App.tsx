@@ -7,6 +7,7 @@ import { ViewportControls } from './components/ViewportControls';
 import { ExportWizard } from './lib/ExportWizard';
 import { FF7SceneParser } from './lib/parser';
 import { FF7SceneRenderer } from './lib/renderer';
+import { Lzss } from './lib/lzss';
 import { PaletteState, SectionVisibility, Stats } from './types';
 
 const App: React.FC = () => {
@@ -66,8 +67,19 @@ const App: React.FC = () => {
   const handleFile = useCallback(
     async (file: File) => {
       try {
-        const buffer = await file.arrayBuffer();
-        parseAndDisplay(buffer, file.name);
+        let buffer = await file.arrayBuffer();
+        let displayName = file.name;
+        
+        if (file.name.toUpperCase().endsWith('.LZS')) {
+          const lzss = new Lzss();
+          const compressed = new Uint8Array(buffer);
+          const compressedData = compressed.slice(4);
+          const decompressed = lzss.decompress(compressedData);
+          buffer = decompressed.buffer.slice(decompressed.byteOffset, decompressed.byteOffset + decompressed.byteLength);
+          displayName = file.name.slice(0, -4);
+        }
+        
+        parseAndDisplay(buffer, displayName);
       } catch (error: any) {
         console.error('Error loading file:', error);
       }
