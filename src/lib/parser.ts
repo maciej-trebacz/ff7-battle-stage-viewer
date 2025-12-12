@@ -182,69 +182,44 @@ export class FF7SceneParser {
       const quadCount = this.readUint16();
       this.readUint16();
 
-      if (quadCount > 0) {
-          const headerV0 = this.readUint16() / 8;
-          const headerV1 = this.readUint16() / 8;
-          const headerV2 = this.readUint16() / 8;
-          const headerV3 = this.readUint16() / 8;
+      for (let i = 0; i < quadCount; i++) {
+          const v0 = this.readUint16() / 8;
+          const v1 = this.readUint16() / 8;
+          const v2 = this.readUint16() / 8;
+          const v3 = this.readUint16() / 8;
 
-          const records = [];
-          for (let i = 0; i < quadCount; i++) {
-              const uvData = [];
-              for (let j = 0; j < 12; j++) {
-                  uvData.push(this.readUint8());
-              }
-              const v0 = this.readUint16() / 8;
-              const v1 = this.readUint16() / 8;
-              const v2 = this.readUint16() / 8;
-              const v3 = this.readUint16() / 8;
-              
-              const storedUVs = [
-                  { u: uvData[0], v: uvData[1] },
-                  { u: uvData[4], v: uvData[5] },
-                  { u: uvData[6], v: uvData[7] },
-                  { u: uvData[8], v: uvData[9] }
-              ];
-              const clutWord = (uvData[3] << 8) | uvData[2];
-              const flags = (uvData[11] << 8) | uvData[10];
-              const clutY = (clutWord >> 6) & 0x1FF;
-              const paletteIndex = clutY >= 504 ? clutY - 504 : 0;
-              
-              records.push({ uvData, storedUVs, clutWord, flags, paletteIndex, vertices: [v0, v1, v2, v3] });
-          }
+          const u0 = this.readUint8();
+          const vt0 = this.readUint8();
+          const clutWord = this.readUint16();
+          const u1 = this.readUint8();
+          const vt1 = this.readUint8();
+          const u2 = this.readUint8();
+          const vt2 = this.readUint8();
+          const u3 = this.readUint8();
+          const vt3 = this.readUint8();
+          const flags = this.readUint16();
 
-          if (records.length > 0 &&
-              headerV0 < vertexCount && headerV1 < vertexCount && 
-              headerV2 < vertexCount && headerV3 < vertexCount &&
-              !(headerV0 === 0 && headerV1 === 0 && headerV2 === 0 && headerV3 === 0)) {
-              const uv = records[0];
+          const clutY = (clutWord >> 6) & 0x1FF;
+          const paletteIndex = clutY >= 504 ? clutY - 504 : 0;
+
+          if (v0 < vertexCount && v1 < vertexCount &&
+              v2 < vertexCount && v3 < vertexCount) {
               quads.push({
-                  uvData: uv.uvData, clutWord: uv.clutWord, flags: uv.flags,
-                  paletteIndex: uv.paletteIndex,
-                  vertices: [headerV0, headerV1, headerV2, headerV3],
-                  storedUVs: uv.storedUVs
+                  clutWord,
+                  flags,
+                  paletteIndex,
+                  vertices: [v0, v1, v2, v3],
+                  storedUVs: [
+                      { u: u0, v: vt0 },
+                      { u: u1, v: vt1 },
+                      { u: u2, v: vt2 },
+                      { u: u3, v: vt3 }
+                  ]
               });
           }
-
-          for (let i = 0; i < records.length - 1; i++) {
-              const verts = records[i].vertices;
-              const uv = records[i + 1];
-              
-              if (verts[0] === 0 && verts[1] === 0 && verts[2] === 0 && verts[3] === 0) {
-                  continue;
-              }
-              
-              if (verts[0] < vertexCount && verts[1] < vertexCount &&
-                  verts[2] < vertexCount && verts[3] < vertexCount) {
-                  quads.push({
-                      uvData: uv.uvData, clutWord: uv.clutWord, flags: uv.flags,
-                      paletteIndex: uv.paletteIndex,
-                      vertices: verts,
-                      storedUVs: uv.storedUVs
-                  });
-              }
-          }
       }
+
+      this.offset += 8;
 
       return {
           index, offset, size,
@@ -285,7 +260,13 @@ export class FF7SceneParser {
               const r = (color16 & 0x1F) << 3;
               const g = ((color16 >> 5) & 0x1F) << 3;
               const b = ((color16 >> 10) & 0x1F) << 3;
-              const a = (r === 0 && g === 0 && b === 0) ? 0 : 255;
+              const stp = (color16 >> 15) & 1;
+              
+              let a = 255;
+              if (r === 0 && g === 0 && b === 0) {
+                  a = stp ? 255 : 0;
+              }
+              
               colors.push({ r, g, b, a });
           }
 

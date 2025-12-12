@@ -6,3 +6,4 @@ export/
 .vite/
 node_modules/
 dist/
+vendor/

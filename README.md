@@ -71,11 +71,11 @@ All geometry sections (including the ground plane at section 1) use the same uni
 │   [2 bytes] count                  │
 │   [2 bytes] tpage                  │
 ├────────────────────────────────────┤
-│ [8 bytes] First quad vertices      │
+│ [count × 20 bytes] Quad data       │
 │   (if count > 0)                   │
 ├────────────────────────────────────┤
-│ [count × 20 bytes] Quad records    │
-│   (if count > 0)                   │
+│ [8 bytes] Unknown/padding          │
+│   (almost always 0)                │
 └────────────────────────────────────┘
 ```
 
@@ -119,37 +119,21 @@ Each vertex has its own UV coordinates: (U0,V0), (U1,V1), (U2,V2).
 
 ### Textured Quad Record (20 bytes)
 
-**Important:** Quad data uses an interleaved layout where UV data and vertex indices are offset by one record.
-
 | Offset | Size | Description |
 |--------|------|-------------|
-| 0x00 | 12 bytes | UV data for the **previous** quad |
-| 0x0C | 8 bytes | Vertex offsets for the **next** quad |
+| 0x00 | 8 bytes | 4× vertex byte offsets (uint16, divide by 8) |
+| 0x08 | 1 byte | U0 coordinate |
+| 0x09 | 1 byte | V0 coordinate |
+| 0x0A | 2 bytes | CLUT attribute (palette selector) |
+| 0x0C | 1 byte | U1 coordinate |
+| 0x0D | 1 byte | V1 coordinate |
+| 0x0E | 1 byte | U2 coordinate |
+| 0x0F | 1 byte | V2 coordinate |
+| 0x10 | 1 byte | U3 coordinate |
+| 0x11 | 1 byte | V3 coordinate |
+| 0x12 | 2 bytes | Flags (typically 0x007F) |
 
-**Data Layout:**
-```
-First quad vertices: from 8-byte header before records
-Record 0: [UV for Quad 0 (header quad)][Vertices for Quad 1]
-Record 1: [UV for Quad 1][Vertices for Quad 2]
-Record 2: [UV for Quad 2][Vertices for Quad 3]
-...
-Record N-1: [UV for Quad N-1][Padding vertices (0,0,0,0)]
-```
-
-**UV Data Structure (12 bytes):**
-
-| Offset | Size | Description |
-|--------|------|-------------|
-| 0x00 | 1 byte | U0 coordinate |
-| 0x01 | 1 byte | V0 coordinate |
-| 0x02 | 2 bytes | CLUT attribute (palette selector) |
-| 0x04 | 1 byte | U1 coordinate |
-| 0x05 | 1 byte | V1 coordinate |
-| 0x06 | 1 byte | U2 coordinate |
-| 0x07 | 1 byte | V2 coordinate |
-| 0x08 | 1 byte | U3 coordinate |
-| 0x09 | 1 byte | V3 coordinate |
-| 0x0A | 2 bytes | Flags (typically 0x007F) |
+Each vertex has its own UV coordinates: (U0,V0), (U1,V1), (U2,V2), (U3,V3).
 
 ### CLUT Attribute
 
