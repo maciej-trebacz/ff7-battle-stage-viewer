@@ -4,6 +4,9 @@ Reverse-engineered documentation for Final Fantasy VII PlayStation battle scene 
 
 This repo also contains a viewer for the PSX files and an exporter to the PC formats.
 
+**[Open the viewer in your browser](https://maciej-trebacz.github.io/ff7-battle-stage-viewer/)**
+
+
 ## Overview
 
 Battle scene files contain all the 3D geometry and texture data needed to render a battle environment. These files are typically LZS-compressed and must be decompressed before parsing.
